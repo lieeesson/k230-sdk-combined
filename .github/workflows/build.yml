@@ -82,6 +82,7 @@ jobs:
 
       - name: Build SDK
         run: |
+          cd sdk
           make CONF=${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig \
             BR2_PRIMARY_SITE=${{ env.DL_SITE }}
 

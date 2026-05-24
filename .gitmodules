@@ -1,0 +1,9 @@
+[submodule "uboot"]
+	path = uboot
+	url = https://github.com/u-boot/u-boot.git
+[submodule "linux"]
+	path = linux
+	url = https://github.com/torvalds/linux.git
+[submodule "sdk"]
+	path = sdk
+	url = https://github.com/kendryte/k230_linux_sdk.git

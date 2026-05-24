@@ -13,7 +13,7 @@ concurrency:
 env:
   GCC_FILE: Xuantie-900-gcc-linux-6.6.0-glibc-x86_64-V3.0.2-20250410
   GCC_FILE_MD5: 8cefc7e94f760eaecc3620ffb238bf4a
-  DL_SITE: https://ai.b-bug.org/k230/downloads/dl/
+  DL_SITE: https://kendryte-download.canaan-creative.com/k230/downloads/dl/
 
 jobs:
   build:

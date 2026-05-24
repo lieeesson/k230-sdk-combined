@@ -1,0 +1,106 @@
+name: K230 Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DL_SITE: https://ai.b-bug.org/k230/downloads/dl/
+  GH_PROXY: socks5://proxy.b-bug.org:1080
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build K230 (${{ matrix.hw_type }}-${{ matrix.hw_model }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      matrix:
+        hw_type: [k230, k230d]
+        hw_model: [canmv]
+
+    steps:
+      - name: Set up Git safe directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout combined repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up git proxy for submodules
+        run: git config --global https.proxy ${GH_PROXY}
+
+      - name: Init submodules
+        run: |
+          git submodule update --init --depth=1 uboot || true
+          git submodule update --init --depth=1 linux || true
+          git submodule update --init --depth=1 sdk || true
+
+      - name: Show submodule status
+        run: |
+          echo "=== .gitmodules ==="
+          cat .gitmodules
+          echo ""
+          echo "=== uboot ==="
+          ls uboot/ 2>/dev/null | head -3 || echo "NOT initialized"
+          echo ""
+          echo "=== linux ==="
+          ls linux/ 2>/dev/null | head -3 || echo "NOT initialized"
+          echo ""
+          echo "=== sdk ==="
+          ls sdk/ 2>/dev/null | head -3 || echo "NOT initialized"
+
+      # ── Cache Buildroot downloads ────────────────────────────
+      - name: Cache Buildroot downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildroot-cache/
+            sdk/buildroot-download/
+          key: ${{ runner.os }}-br-${{ matrix.hw_type }}-${{ hashFiles('sdk/Makefile', 'sdk/**/*.hash') }}
+          restore-keys: |
+            ${{ runner.os }}-br-${{ matrix.hw_type }}-
+            ${{ runner.os }}-br-
+
+      # ── Build K230 SDK image ────────────────────────────────
+      - name: Build K230 Image
+        env:
+          CONF: ${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig
+        run: |
+          cd sdk
+          echo "=== Building ${CONF} ==="
+          time make CONF=${CONF} BR2_PRIMARY_SITE=${DL_SITE} || exit 1
+          echo "=== Build output ==="
+          ls -la output/${CONF}/images/ 2>/dev/null || echo "No images dir"
+          du -sh output/${CONF}/ 2>/dev/null || echo "No output dir"
+
+      # ── Cache build output ──────────────────────────────────
+      - name: Cache build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            sdk/output/${{ env.CONF }}/images/
+          key: ${{ runner.os }}-k230-img-${{ matrix.hw_type }}-${{ matrix.hw_model }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-k230-img-${{ matrix.hw_type }}-${{ matrix.hw_model }}-
+
+      # ── Upload artifacts ─────────────────────────────────────
+      - name: Upload build artifacts
+        env:
+          CONF: ${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig
+        uses: actions/upload-artifact@v4
+        with:
+          name: k230-image-${{ matrix.hw_type }}-${{ matrix.hw_model }}
+          path: |
+            sdk/output/${{ env.CONF }}/images/*.img.gz
+            sdk/output/${{ env.CONF }}/images/*.img
+          retention-days: 7
+          compression-level: 6

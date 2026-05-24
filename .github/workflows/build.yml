@@ -6,13 +6,14 @@ on:
   pull_request:
     branches: [main, dev]
 
-env:
-  DL_SITE: https://ai.b-bug.org/k230/downloads/dl/
-  CONF: ${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig
-
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
+
+env:
+  GCC_FILE: Xuantie-900-gcc-linux-6.6.0-glibc-x86_64-V3.0.2-20250410
+  GCC_FILE_MD5: 8cefc7e94f760eaecc3620ffb238bf4a
+  DL_SITE: https://ai.b-bug.org/k230/downloads/dl/
 
 jobs:
   build:
@@ -21,8 +22,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hw_type: [k230, k230d]
-        hw_model: [canmv]
+        include:
+          - hw_type: k230
+            hw_model: canmv
+          - hw_type: k230d
+            hw_model: canmv
 
     steps:
       - name: Checkout SDK
@@ -31,9 +35,31 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Cache toolchain tarball
+        id: cache-tc
+        uses: actions/cache@v4
+        with:
+          path: /tmp/${{ env.GCC_FILE }}.tar.gz
+          key: tc-${{ env.GCC_FILE }}-${{ env.GCC_FILE_MD5 }}
+          restore-keys: |
+            tc-${{ env.GCC_FILE }}-
+
+      - name: Download toolchain (if not cached)
+        if: steps.cache-tc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /opt/toolchain
+          wget ${{ env.DL_SITE }}/gcc/${{ env.GCC_FILE }}.tar.gz \
+            -O /tmp/${{ env.GCC_FILE }}.tar.gz
+
+      - name: Verify and extract toolchain
+        run: |
+          echo "${{ env.GCC_FILE_MD5 }}  /tmp/${{ env.GCC_FILE }}.tar.gz" | md5sum -c
+          sudo mkdir -p /opt/toolchain
+          sudo tar -xf /tmp/${{ env.GCC_FILE }}.tar.gz -C /opt/toolchain
+          ls /opt/toolchain/
+
       - name: Cache buildroot downloads
         uses: actions/cache@v4
-        id: cache-dl
         with:
           path: |
             ~/.buildroot-cache/
@@ -43,18 +69,21 @@ jobs:
             dl-${{ runner.os }}-${{ matrix.hw_type }}-
 
       - name: Link download cache
-        if: steps.cache-dl.outputs.cache-hit == 'true'
+        if: steps.cache-tc.outputs.cache-hit == 'true'
         run: |
           mkdir -p sdk/output/${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig/buildroot-2025.02.1/
-          ln -sf ~/.buildroot-cache ~/.buildroot-cache-link 2>/dev/null || true
-          test -d ~/.buildroot-cache-link/download && \
-            ln -sf ~/.buildroot-cache-link/download sdk/output/${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig/buildroot-2025.02.1/download
+          test -d ~/.buildroot-cache && \
+            ln -sf ~/.buildroot-cache sdk/output/${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig/buildroot-2025.02.1/download || true
 
-      - name: Install toolchain and dependencies
-        run: make toolchain_and_depend
+      - name: Install build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc python3 python3-pcpp
 
       - name: Build SDK
-        run: make CONF=${{ env.CONF }} BR2_PRIMARY_SITE=${{ env.DL_SITE }}
+        run: |
+          make CONF=${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig \
+            BR2_PRIMARY_SITE=${{ env.DL_SITE }}
 
       - name: Cache build output
         uses: actions/cache@v4

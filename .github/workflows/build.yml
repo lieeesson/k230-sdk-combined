@@ -68,6 +68,19 @@ jobs:
           restore-keys: |
             dl-${{ runner.os }}-${{ matrix.hw_type }}-
 
+      - name: Restore buildroot compilation cache
+        id: cache-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            sdk/output/${{ matrix.hw_type }}_${{ matrix.hw_model }}_defconfig/
+            buildroot-2025.02.1/
+            .staging_dir/
+            .host_dir/
+          key: build-int-${{ runner.os }}-${{ matrix.hw_type }}-${{ matrix.hw_model }}-${{ github.sha }}
+          restore-keys: |
+            build-int-${{ runner.os }}-${{ matrix.hw_type }}-${{ matrix.hw_model }}-
+
       - name: Link download cache
         if: steps.cache-tc.outputs.cache-hit == 'true'
         run: |
